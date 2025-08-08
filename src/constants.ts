@@ -6,11 +6,8 @@ export type AddressMap = {
     [chainId: number]: string;
 };
 
-export const PARADEX_LAYERSWAP_DEPOSIT_ADDRESS: AddressMap = {
-    [SupportedChainId.ARBITRUM]: '0x2Fc617E933a52713247CE25730f6695920B3befe'
-};
-
-export const USDC_ON_ARBITRUM_ADDRESS = "0xaf88d065e77c8cc2239327c5edb3a432268e5831";
+export const USDT_ON_ARBITRUM_ADDRESS = "0xaf88d065e77c8cc2239327c5edb3a432268e5831";
+export const USDT_ON_APTOS_ADDRESS = "0xf73e887a8754f540ee6e1a93bdc6dde2af69fc7ca5de32013e89dd44244473cb"
 
 export const USDC_ABI = [
     {

@@ -1,5 +1,5 @@
 {
-  "name": "aarc-paradex-deposit",
+  "name": "aarc-kana-deposit",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,8 +10,10 @@
     "preview": "vite preview --port $PORT --host 0.0.0.0"
   },
   "dependencies": {
+    "@aarc-dev/fundkit-web-sdk": "^0.3.2",
     "@aarc-xyz/eth-connector": "^0.1.7",
-    "@aarc-xyz/fundkit-web-sdk": "^0.1.4",
+    "@esbuild-plugins/node-globals-polyfill": "^0.2.3",
+    "@kanalabs/aggregator": "0.7.14-beta.14",
     "@rainbow-me/rainbowkit": "^2.2.3",
     "@tailwindcss/vite": "^4.0.10",
     "@tanstack/react-query": "^5.66.3",
@@ -21,6 +23,7 @@
     "process": "^0.11.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "rollup-plugin-polyfill-node": "^0.13.0",
     "stream-browserify": "^3.0.0",
     "util": "^0.12.5",
     "viem": "^2.23.2",
@@ -32,6 +35,7 @@
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.21",
+    "crypto-browserify": "^3.12.0",
     "eslint": "^9.21.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.19",

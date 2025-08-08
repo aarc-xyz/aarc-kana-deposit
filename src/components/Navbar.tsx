@@ -21,8 +21,8 @@ export const Navbar = ({ handleDisconnect }: { handleDisconnect: () => void }) =
                     />
                     <img
                         className="h-6 w-18"
-                        src="/paradex-name-logo.svg"
-                        alt="paradex Logo"
+                        src="/kana-name-logo.svg"
+                        alt="kana labs Logo"
                     />
                 </div>
                 <div className="flex items-center space-x-4">

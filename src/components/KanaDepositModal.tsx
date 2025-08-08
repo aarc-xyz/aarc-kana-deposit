@@ -2,14 +2,15 @@ import { useState } from 'react';
 import { useAccount, useDisconnect, useWalletClient } from 'wagmi';
 import { useChainId, useSwitchChain } from 'wagmi';
 import { ethers } from 'ethers';
-import { AarcFundKitModal } from '@aarc-xyz/fundkit-web-sdk';
-import { USDC_ON_ARBITRUM_ADDRESS, SupportedChainId, USDC_ABI } from '../constants';
+import { AarcFundKitModal } from '@aarc-dev/fundkit-web-sdk';
+import {  SupportedChainId, USDT_ON_APTOS_ADDRESS, USDT_ON_ARBITRUM_ADDRESS } from '../constants';
 import { Navbar } from './Navbar';
 import StyledConnectButton from './StyledConnectButton';
+import { SwapAggregator, Environment, NetworkId, EvmSignerType } from '@kanalabs/aggregator';
 
-export const ParadexDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal }) => {
+export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal }) => {
     const [amount, setAmount] = useState('1');
-    const [paradexAddress, setParadexAddress] = useState('');
+    const [kanaAptosAddress, setKanaAptosAddress] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [showProcessingModal, setShowProcessingModal] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -20,124 +21,80 @@ export const ParadexDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal
     const chainId = useChainId();
     const { switchChain } = useSwitchChain();
 
-    const handleDisconnect = () => {
-        // Reset all state values
-        setAmount('20');
-        setParadexAddress('');
-        setIsProcessing(false);
-        setShowProcessingModal(false);
-        setError(null);
-
-        // Disconnect wallet
-        disconnect();
-    };
-
-    const getLayerSwapCallData = async () => {
-        try {
-            const response = await fetch('https://api.layerswap.io/api/v2/swaps', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-LS-APIKEY': import.meta.env.VITE_LAYERSWAP_API_KEY
-                },
-                body: JSON.stringify({
-                    source_network: "ARBITRUM_MAINNET",
-                    destination_network: "PARADEX_MAINNET",
-                    amount: parseFloat(amount),
-                    source_token: "USDC",
-                    destination_token: "USDC",
-                    source_address: address,
-                    destination_address: paradexAddress,
-                })
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to get LayerSwap call data');
-            }
-
-            const data = await response.json();
-            return {
-                toAddress: data.data.deposit_actions[0].to_address,
-                callData: data.data.deposit_actions[0].call_data
-            };
-        } catch (error) {
-            console.error('Error getting LayerSwap call data:', error);
-            throw error;
-        }
-    };
-
-    const transferToParadex = async () => {
-        if (!walletClient || !address || !paradexAddress) return;
-
+    
+    // Helper to perform the cross-chain swap using Kana
+    const transferToKana = async () => {
+        if (!walletClient || !address || !kanaAptosAddress) return;
         try {
             setError(null);
             setIsProcessing(true);
-
-            // Check if we're on Arbitrum, if not switch
+            setShowProcessingModal(true);
+            
+            // Ensure on Arbitrum
             if (chainId !== SupportedChainId.ARBITRUM) {
-                setShowProcessingModal(true);
                 await switchChain({ chainId: SupportedChainId.ARBITRUM });
-                
-                // Wait for network switch to complete
                 await new Promise(resolve => setTimeout(resolve, 2000));
             }
-
+            
+            // Get provider and signer
             const provider = new ethers.BrowserProvider(walletClient);
             const signer = await provider.getSigner();
             
-            const usdcContract = new ethers.Contract(
-                USDC_ON_ARBITRUM_ADDRESS,
-                USDC_ABI,
-                signer
-            );
-
-            const amountInWei = ethers.parseUnits(amount, 6); // USDC has 6 decimals
-
-            // Get LayerSwap call data
-            const { toAddress, callData } = await getLayerSwapCallData();
-
-            // Check allowance
-            const allowance = await usdcContract.allowance(address, toAddress);
-            if (allowance < amountInWei) {
-                // Need to approve first
-                const approveTx = await usdcContract.approve(
-                    toAddress,
-                    amountInWei
-                );
-                await approveTx.wait();
-            }
-            
-            // Now do the transfer using the LayerSwap call data
-            const tx = await signer.sendTransaction({
-                to: toAddress,
-                data: callData,
-                gasLimit: 100000 // Add explicit gas limit
+            const crossChainAggregator = new SwapAggregator(Environment.production, {
+                providers: {
+                    arbitrum: provider,
+                }
             });
 
-            // Wait for transaction to be mined
-            await tx.wait();
-            
+            console.log("amount", "before crosschain quote")
+
+            // Get Kana cross-chain quote
+            const quotes = await crossChainAggregator.crossChainQuote({
+                apiKey: import.meta.env.VITE_KANA_API_KEY,
+                sourceToken: USDT_ON_ARBITRUM_ADDRESS,
+                targetToken: USDT_ON_APTOS_ADDRESS,
+                sourceChain: NetworkId.Arbitrum,
+                targetChain: NetworkId.aptos,
+                amountIn: ethers.parseUnits(amount, 6).toString(), // USDT has 6 decimals
+                sourceSlippage: 0.1,
+                targetSlippage: 0.1,
+            });
+            const optimalQuote = quotes.data[0];
+
+            console.log("amount", "after crosschain quote")
+
+            // Execute the cross-chain transfer
+            await crossChainAggregator.executeTransfer({
+                apiKey: import.meta.env.VITE_KANA_API_KEY,
+                quote: optimalQuote,
+                sourceAddress: address,
+                targetAddress: kanaAptosAddress,
+                sourceProvider: provider,
+                sourceSigner: signer as unknown as EvmSignerType,
+            });
+
+            console.log("amount", "after crosschain transfer")
+
             setShowProcessingModal(false);
             setAmount('');
-            setParadexAddress('');
+            setKanaAptosAddress('');
             setIsProcessing(false);
         } catch (error) {
-            console.error("Error transferring USDC to Paradex:", error);
-            setError(error instanceof Error ? error.message : "An error occurred during the transfer");
+            console.error('Error transferring USDT to Kana:', error);
+            setError(error instanceof Error ? error.message : 'An error occurred during the transfer');
             setShowProcessingModal(false);
             setIsProcessing(false);
         }
     };
 
     const handleDeposit = async () => {
-        if (!address || !walletClient || !paradexAddress) return;
+        if (!address || !walletClient || !kanaAptosAddress) return;
 
         try {
             setIsProcessing(true);
             setError(null);
 
-            // Step 1: Use AArc to convert assets to USDC
+            // Step 1: Use AArc to convert assets to USDT (if needed)
             aarcModal.updateRequestedAmount(Number(amount));
             aarcModal.updateDestinationWalletAddress(address as `0x${string}`);
 
@@ -145,7 +102,7 @@ export const ParadexDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal
                 onTransactionSuccess: () => {
                     aarcModal.close();
                     setShowProcessingModal(true);
-                    transferToParadex();
+                    transferToKana();
                 }
             });
 
@@ -154,15 +111,28 @@ export const ParadexDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal
             setAmount('');
             setIsProcessing(false);
         } catch (error) {
-            console.error("Error preparing deposit:", error);
-            setError(error instanceof Error ? error.message : "An error occurred during the deposit");
+            console.error('Error preparing deposit:', error);
+            setError(error instanceof Error ? error.message : 'An error occurred during the deposit');
             setIsProcessing(false);
             aarcModal.close();
         }
     };
 
+    const handleDisconnect = () => {
+        // Reset all state values
+        setAmount('20');
+        setKanaAptosAddress('');
+        setIsProcessing(false);
+        setShowProcessingModal(false);
+        setError(null);
+
+        // Disconnect wallet
+        disconnect();
+    };
+
+
     const shouldDisableInteraction = !address;
-    const isParadexAddressValid = paradexAddress.length > 0;
+    const isKanaAddressValid = kanaAptosAddress.length > 0;
 
     return (
         <div className="min-h-screen bg-aarc-bg grid-background">
@@ -172,13 +142,13 @@ export const ParadexDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal
                     {showProcessingModal ? (
                         // Processing Modal
                         <div className="flex flex-col items-center gap-4">
-                            <img src="/paradex-name-logo.svg" alt="Paradex" className="w-32 h-16" />
+                            <img src="/kana-name-logo.svg" alt="Kana" className="w-32 h-16" />
                             <h3 className="text-[18px] font-semibold text-[#F6F6F6]">
                                 {chainId !== SupportedChainId.ARBITRUM 
                                     ? "Switching to Arbitrum Network..."
                                     : "Transferring to "}
                                 {chainId === SupportedChainId.ARBITRUM && (
-                                    <a href="https://app.paradex.trade/portfolio?primary_tab=balances&active_tab=spot" target="_blank" rel="noopener noreferrer" className="underline text-[#A5E547]">Paradex</a>
+                                    <a href="https://www.kana.trade/?market=BTC-PERP" target="_blank" rel="noopener noreferrer" className="underline text-[#A5E547]">Kana Labs</a>
                                 )}
                             </h3>
                             <p className="text-[14px] text-[#C3C3C3] text-center">
@@ -196,8 +166,8 @@ export const ParadexDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal
 
                             {/* Amount Input */}
                             <div className="w-full">
-                                <a href="https://app.paradex.trade/portfolio?primary_tab=balances&active_tab=spot" target="_blank" rel="noopener noreferrer" className="block">
-                                    <h3 className="text-[14px] font-semibold text-[#F6F6F6] mb-4">Deposit in <span className="underline text-[#A5E547]">PARADEX</span></h3>
+                                <a href="https://www.kana.trade/?market=BTC-PERP" target="_blank" rel="noopener noreferrer" className="block">
+                                    <h3 className="text-[14px] font-semibold text-[#F6F6F6] mb-4">Deposit in <span className="underline text-[#A5E547]">Kana</span></h3>
                                 </a>
                                 <div className="flex items-center p-3 bg-[#2A2A2A] border border-[#424242] rounded-2xl">
                                     <div className="flex items-center gap-3">
@@ -216,24 +186,24 @@ export const ParadexDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal
                                 </div>
                             </div>
 
-                            {/* Paradex Address Input */}
+                            {/* Kana Address Input */}
                             <div className="w-full">
                                 <div className="flex items-center p-3 bg-[#2A2A2A] border border-[#424242] rounded-2xl">
                                     <div className="w-full flex justify-between gap-3">
-                                        <img src="/paradex-logo.png" alt="Paradex" className="w-6 h-6" />
+                                        <img src="/kana-logo.svg" alt="Kana" className="w-6 h-6" />
                                         <input
                                             type="text"
-                                            value={paradexAddress}
-                                            onChange={(e) => setParadexAddress(e.target.value)}
+                                            value={kanaAptosAddress}
+                                            onChange={(e) => setKanaAptosAddress(e.target.value)}
                                             className="w-full bg-transparent text-[18px] font-semibold text-[#F6F6F6] outline-none"
-                                            placeholder="Enter your Paradex address"
+                                            placeholder="Enter your Kana address"
                                             disabled={shouldDisableInteraction}
                                         />
                                     </div>
                                 </div>
-                                {!isParadexAddressValid && (
+                                {!isKanaAddressValid && (
                                     <p className="text-[12px] text-[#FF6B6B] mt-2">
-                                        Please enter your Paradex address
+                                        Please enter your Kana address
                                     </p>
                                 )}
                             </div>
@@ -256,14 +226,14 @@ export const ParadexDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal
                             <div className="w-full flex gap-x-2 items-start p-4 bg-[rgba(255,183,77,0.05)] border border-[rgba(255,183,77,0.2)] rounded-2xl mt-2">
                                 <img src="/info-icon.svg" alt="Info" className="w-4 h-4 mt-[2px]" />
                                 <p className="text-xs font-bold text-[#F6F6F6] leading-5">
-                                    The funds will be deposited in paradex.
+                                    The funds will be deposited in Kana.
                                 </p>
                             </div>
 
                             {/* Continue Button */}
                             <button
-                                onClick={handleDeposit}
-                                disabled={isProcessing || shouldDisableInteraction || !isParadexAddressValid}
+                                onClick={transferToKana}
+                                disabled={isProcessing || shouldDisableInteraction || !isKanaAddressValid}
                                 className="w-full h-11 mt-2 bg-[#A5E547] hover:opacity-90 text-[#003300] font-semibold rounded-2xl border border-[rgba(0,51,0,0.05)] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {isProcessing ? 'Processing...' : 'Continue'}
@@ -287,4 +257,4 @@ export const ParadexDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal
     );
 };
 
-export default ParadexDepositModal;
+export default KanaDepositModal;

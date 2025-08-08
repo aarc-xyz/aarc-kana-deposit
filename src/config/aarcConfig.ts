@@ -4,11 +4,13 @@ import {
   TransactionSuccessData,
   TransactionErrorData,
   SourceConnectorName,
-} from "@aarc-xyz/fundkit-web-sdk";
-import { SupportedChainId, USDC_ON_ARBITRUM_ADDRESS } from "../constants";
+} from "@aarc-dev/fundkit-web-sdk";
+import { SupportedChainId, USDT_ON_ARBITRUM_ADDRESS } from "../constants";
 
 export const aarcConfig: FKConfig = {
-  appName: "Paradex x Aarc",
+  appName: "Kana Labs x Aarc",
+  userId: "0x",
+  dappId: "Kanademo",
   module: {
     exchange: {
       enabled: true,
@@ -26,7 +28,7 @@ export const aarcConfig: FKConfig = {
   },
   destination: {
     chainId: SupportedChainId.ARBITRUM, // Arbitrum chain ID
-    tokenAddress: USDC_ON_ARBITRUM_ADDRESS, // USDC on Arbitrum
+    tokenAddress: USDT_ON_ARBITRUM_ADDRESS, // USDC on Arbitrum
   },
   appearance: {
     roundness: 42,
