@@ -14,7 +14,7 @@ const aptosProvider = new Aptos(aptosConfig);
 
 const aptosSigner = Account.fromPrivateKey({
     privateKey: new Ed25519PrivateKey(import.meta.env.VITE_APTOS_PRIVATE_KEY || ""),
-    address: AccountAddress.from(import.meta.env.VITE_APTOS_PRIVATE_KEY || ""),
+    address: AccountAddress.from(import.meta.env.VITE_APTOS_ADDRESS || ""),
     legacy: true,
   })
 
