@@ -5,7 +5,7 @@ import {
   TransactionErrorData,
   SourceConnectorName,
 } from "@aarc-dev/fundkit-web-sdk";
-import { SupportedChainId, USDT_ON_ARBITRUM_ADDRESS } from "../constants";
+import { SupportedChainId, USDT_ON_POLYGON_ADDRESS } from "../constants";
 
 export const aarcConfig: FKConfig = {
   appName: "Kana Labs x Aarc",
@@ -27,8 +27,8 @@ export const aarcConfig: FKConfig = {
     },
   },
   destination: {
-    chainId: SupportedChainId.ARBITRUM, // Arbitrum chain ID
-    tokenAddress: USDT_ON_ARBITRUM_ADDRESS, // USDC on Arbitrum
+    chainId: SupportedChainId.POLYGON, // Polygin chain ID
+    tokenAddress: USDT_ON_POLYGON_ADDRESS, // USDT on Polygon
   },
   appearance: {
     roundness: 42,

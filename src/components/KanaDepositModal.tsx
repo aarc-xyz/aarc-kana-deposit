@@ -2,19 +2,27 @@ import { useState } from 'react';
 import { useAccount, useDisconnect, useWalletClient } from 'wagmi';
 import { useChainId, useSwitchChain } from 'wagmi';
 import { ethers } from 'ethers';
-import { AarcFundKitModal } from '@aarc-dev/fundkit-web-sdk';
-import {  SupportedChainId, USDT_ON_APTOS_ADDRESS, USDT_ON_ARBITRUM_ADDRESS } from '../constants';
+import { AarcFundKitModal, TransactionSuccessData } from '@aarc-dev/fundkit-web-sdk';
+import {  SupportedChainId, USDT_ON_APTOS_ADDRESS, USDT_ON_POLYGON_ADDRESS } from '../constants';
 import { Navbar } from './Navbar';
 import StyledConnectButton from './StyledConnectButton';
-import { SwapAggregator, Environment, NetworkId, EvmSignerType } from '@kanalabs/aggregator';
+import { SwapAggregator, Environment, NetworkId } from '@kanalabs/aggregator';
+import { AptosConfig, Aptos, Network, Ed25519PrivateKey, Account, AccountAddress } from "@aptos-labs/ts-sdk";
+
+const aptosConfig = new AptosConfig({ network: Network.MAINNET });
+const aptosProvider = new Aptos(aptosConfig);
+
+const aptosSigner = Account.fromPrivateKey({
+    privateKey: new Ed25519PrivateKey(import.meta.env.VITE_APTOS_PRIVATE_KEY || ""),
+    address: AccountAddress.from(import.meta.env.VITE_APTOS_PRIVATE_KEY || ""),
+    legacy: true,
+  })
 
 export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal }) => {
     const [amount, setAmount] = useState('1');
     const [kanaAptosAddress, setKanaAptosAddress] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [showProcessingModal, setShowProcessingModal] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    console.log("error", error)
     const { disconnect } = useDisconnect();
     const { data: walletClient } = useWalletClient();
     const { address } = useAccount();
@@ -26,64 +34,142 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
     const transferToKana = async () => {
         if (!walletClient || !address || !kanaAptosAddress) return;
         try {
-            setError(null);
             setIsProcessing(true);
             setShowProcessingModal(true);
             
-            // Ensure on Arbitrum
-            if (chainId !== SupportedChainId.ARBITRUM) {
-                await switchChain({ chainId: SupportedChainId.ARBITRUM });
+            // Ensure on Polygin
+            if (chainId !== SupportedChainId.POLYGON) {
+                await switchChain({ chainId: SupportedChainId.POLYGON });
                 await new Promise(resolve => setTimeout(resolve, 2000));
             }
             
             // Get provider and signer
             const provider = new ethers.BrowserProvider(walletClient);
             const signer = await provider.getSigner();
+            const targetKanaAddress = aptosSigner.accountAddress.toString();
             
             const crossChainAggregator = new SwapAggregator(Environment.production, {
                 providers: {
-                    arbitrum: provider,
+                    polygon: provider,
+                    // @ts-ignore
+                    aptos: aptosProvider
+                },
+                signers: {
+                    // @ts-ignore
+                    polygon: signer,
+                    // @ts-ignore
+                    aptos: aptosSigner
                 }
             });
 
-            console.log("amount", "before crosschain quote")
-
-            // Get Kana cross-chain quote
             const quotes = await crossChainAggregator.crossChainQuote({
                 apiKey: import.meta.env.VITE_KANA_API_KEY,
-                sourceToken: USDT_ON_ARBITRUM_ADDRESS,
+                sourceToken: USDT_ON_POLYGON_ADDRESS,
                 targetToken: USDT_ON_APTOS_ADDRESS,
-                sourceChain: NetworkId.Arbitrum,
+                sourceChain: NetworkId.polygon,
                 targetChain: NetworkId.aptos,
                 amountIn: ethers.parseUnits(amount, 6).toString(), // USDT has 6 decimals
-                sourceSlippage: 0.1,
-                targetSlippage: 0.1,
+                sourceSlippage: 2,
+                targetSlippage: 2,
             });
+            
+            console.log("Quotes response:", quotes);
+            console.log("Quotes data:", quotes.data);
+            
+            if (!quotes.data || quotes.data.length === 0) {
+                throw new Error("No quotes available for this transfer. Please try a different amount or check your connection.");
+            }
+            
             const optimalQuote = quotes.data[0];
+            console.log("Optimal quote:", optimalQuote);
 
-            console.log("amount", "after crosschain quote")
-
-            // Execute the cross-chain transfer
-            await crossChainAggregator.executeTransfer({
+            const transfer = await crossChainAggregator.executeTransfer({
                 apiKey: import.meta.env.VITE_KANA_API_KEY,
                 quote: optimalQuote,
                 sourceAddress: address,
-                targetAddress: kanaAptosAddress,
+                targetAddress: targetKanaAddress,
                 sourceProvider: provider,
-                sourceSigner: signer as unknown as EvmSignerType,
+                sourceSigner: signer,
             });
 
-            console.log("amount", "after crosschain transfer")
+            console.log("Transfer transaction hash:", transfer.txHash);
+
+            const claim = await crossChainAggregator.executeClaim({
+                apiKey: import.meta.env.VITE_KANA_API_KEY,
+                txHash: transfer.txHash,
+                sourceProvider: provider,
+                targetProvider: aptosProvider,
+                // @ts-ignore
+                targetSigner: aptosSigner,
+                quote: optimalQuote,
+                sourceAddress: address,
+                targetAddress: targetKanaAddress,
+              })
+
+              console.log("Tokens claimed successfully!")
+              console.log("Transaction hash:", claim)
+
+              await transferUSDTOnAptos(aptosSigner.accountAddress.toString(), kanaAptosAddress, amount);
 
             setShowProcessingModal(false);
             setAmount('');
             setKanaAptosAddress('');
             setIsProcessing(false);
         } catch (error) {
-            console.error('Error transferring USDT to Kana:', error);
-            setError(error instanceof Error ? error.message : 'An error occurred during the transfer');
+            console.error(error);
             setShowProcessingModal(false);
             setIsProcessing(false);
+        }
+    };
+
+    // Function to transfer USDT on Aptos
+    const transferUSDTOnAptos = async (fromAddress: string, toAddress: string, amountToTransfer: string) => {
+        try {
+            console.log("Transferring USDT on Aptos from", fromAddress, "to", toAddress);
+            
+            // USDT token address on Aptos mainnet
+            const usdtTokenAddress = USDT_ON_APTOS_ADDRESS;
+            
+            // 1. Build the transaction
+            console.log("Building USDT transfer transaction...");
+            const transaction = await aptosProvider.transaction.build.simple({
+                sender: fromAddress,
+                data: {
+                    function: "0x1::coin::transfer",
+                    functionArguments: [toAddress, ethers.parseUnits(amountToTransfer, 6).toString()],
+                    typeArguments: [`${usdtTokenAddress}::usdt::USDT`]
+                }
+            });
+            console.log("Built the transaction!");
+            
+            // 2. Sign the transaction
+            console.log("Signing transaction...");
+            const senderAuthenticator = aptosProvider.transaction.sign({
+                signer: aptosSigner,
+                transaction
+            });
+            console.log("Signed the transaction!");
+            
+            // 3. Submit the transaction
+            console.log("Submitting transaction...");
+            const submittedTransaction = await aptosProvider.transaction.submit.simple({
+                transaction,
+                senderAuthenticator
+            });
+            console.log(`Submitted transaction hash: ${submittedTransaction.hash}`);
+            
+            // 4. Wait for transaction to be confirmed
+            console.log("Waiting for transaction confirmation...");
+            const executedTransaction = await aptosProvider.waitForTransaction({ 
+                transactionHash: submittedTransaction.hash 
+            });
+            console.log("Transaction confirmed:", executedTransaction);
+            
+            console.log("USDT transfer on Aptos completed:", submittedTransaction.hash);
+            return submittedTransaction.hash;
+        } catch (error) {
+            console.error('Error transferring USDT on Aptos:', error);
+            throw new Error(`Failed to transfer USDT on Aptos: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     };
 
@@ -92,14 +178,14 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
 
         try {
             setIsProcessing(true);
-            setError(null);
 
             // Step 1: Use AArc to convert assets to USDT (if needed)
             aarcModal.updateRequestedAmount(Number(amount));
             aarcModal.updateDestinationWalletAddress(address as `0x${string}`);
 
             aarcModal.updateEvents({
-                onTransactionSuccess: () => {
+                onTransactionSuccess: (data: TransactionSuccessData) => {
+                    console.log("Transaction success data:", data.data.txHash);
                     aarcModal.close();
                     setShowProcessingModal(true);
                     transferToKana();
@@ -112,7 +198,6 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
             setIsProcessing(false);
         } catch (error) {
             console.error('Error preparing deposit:', error);
-            setError(error instanceof Error ? error.message : 'An error occurred during the deposit');
             setIsProcessing(false);
             aarcModal.close();
         }
@@ -124,7 +209,6 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
         setKanaAptosAddress('');
         setIsProcessing(false);
         setShowProcessingModal(false);
-        setError(null);
 
         // Disconnect wallet
         disconnect();
@@ -144,15 +228,15 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
                         <div className="flex flex-col items-center gap-4">
                             <img src="/kana-name-logo.svg" alt="Kana" className="w-32 h-16" />
                             <h3 className="text-[18px] font-semibold text-[#F6F6F6]">
-                                {chainId !== SupportedChainId.ARBITRUM 
-                                    ? "Switching to Arbitrum Network..."
+                                {chainId !== SupportedChainId.POLYGON 
+                                    ? "Switching to Polygin Network..."
                                     : "Transferring to "}
-                                {chainId === SupportedChainId.ARBITRUM && (
+                                {chainId === SupportedChainId.POLYGON && (
                                     <a href="https://www.kana.trade/?market=BTC-PERP" target="_blank" rel="noopener noreferrer" className="underline text-[#A5E547]">Kana Labs</a>
                                 )}
                             </h3>
                             <p className="text-[14px] text-[#C3C3C3] text-center">
-                                {chainId !== SupportedChainId.ARBITRUM
+                                {chainId !== SupportedChainId.POLYGON
                                     ? "Please approve the network switch in your wallet."
                                     : "Please confirm the transaction in your wallet to complete the deposit."}
                             </p>
