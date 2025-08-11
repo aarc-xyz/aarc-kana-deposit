@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAccount, useDisconnect, useWalletClient } from 'wagmi';
 import { useChainId, useSwitchChain } from 'wagmi';
 import { ethers } from 'ethers';
@@ -7,32 +7,92 @@ import {  SupportedChainId, USDT_ON_APTOS_ADDRESS, USDT_ON_POLYGON_ADDRESS } fro
 import { Navbar } from './Navbar';
 import StyledConnectButton from './StyledConnectButton';
 import { SwapAggregator, Environment, NetworkId } from '@kanalabs/aggregator';
-import { AptosConfig, Aptos, Network, Ed25519PrivateKey, Account, AccountAddress } from "@aptos-labs/ts-sdk";
+import { AptosConfig, Aptos, Network } from "@aptos-labs/ts-sdk";
+import { PetraSigner, getAptosWallet } from '../services/petraSigner';
 
 const aptosConfig = new AptosConfig({ network: Network.MAINNET });
 const aptosProvider = new Aptos(aptosConfig);
 
-const aptosSigner = Account.fromPrivateKey({
-    privateKey: new Ed25519PrivateKey(import.meta.env.VITE_APTOS_PRIVATE_KEY || ""),
-    address: AccountAddress.from(import.meta.env.VITE_APTOS_ADDRESS || ""),
-    legacy: true,
-  })
 
 export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal }) => {
     const [amount, setAmount] = useState('1');
-    const [kanaAptosAddress, setKanaAptosAddress] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [showProcessingModal, setShowProcessingModal] = useState(false);
+    const [isPetraConnected, setIsPetraConnected] = useState(false);
+    const [petraAddress, setPetraAddress] = useState('');
+    const [petraSigner, setPetraSigner] = useState<PetraSigner | null>(null);
+    
     const { disconnect } = useDisconnect();
     const { data: walletClient } = useWalletClient();
     const { address } = useAccount();
     const chainId = useChainId();
     const { switchChain } = useSwitchChain();
 
-    
+    // Check if Petra is installed and connected on component mount
+    useEffect(() => {
+        const checkPetraConnection = async () => {
+            const wallet = getAptosWallet();
+            if (wallet) {
+                try {
+                    const account = await wallet.account();
+                    if (account && account.address && account.publicKey) {
+                        setIsPetraConnected(true);
+                        setPetraAddress(account.address);
+                        // Create PetraSigner instance
+                        const signer = new PetraSigner(account.address, account.publicKey);
+                        setPetraSigner(signer);
+                    }
+                } catch (error) {
+                    console.log("Petra not connected yet");
+                }
+            }
+        };
+        
+        checkPetraConnection();
+    }, []);
+
+    // Connect to Petra wallet
+    const connectPetra = async () => {
+        const wallet = getAptosWallet();
+        if (!wallet) return;
+
+        try {
+            const response = await wallet.connect();
+            console.log("Petra connected:", response);
+            
+            const account = await wallet.account();
+            console.log("Petra account:", account);
+            
+            setIsPetraConnected(true);
+            setPetraAddress(account.address);
+            
+            // Create PetraSigner instance
+            const signer = new PetraSigner(account.address, account.publicKey);
+            setPetraSigner(signer);
+            
+        } catch (error) {
+            console.error("Failed to connect to Petra:", error);
+        }
+    };
+
+    // Disconnect from Petra wallet
+    const disconnectPetra = async () => {
+        const wallet = getAptosWallet();
+        if (wallet) {
+            try {
+                await wallet.disconnect();
+                setIsPetraConnected(false);
+                setPetraAddress('');
+                setPetraSigner(null);
+            } catch (error) {
+                console.error("Failed to disconnect from Petra:", error);
+            }
+        }
+    };
+
     // Helper to perform the cross-chain swap using Kana
     const transferToKana = async () => {
-        if (!walletClient || !address || !kanaAptosAddress) return;
+        if (!walletClient || !address || !isPetraConnected || !petraSigner) return;
         try {
             setIsProcessing(true);
             setShowProcessingModal(true);
@@ -45,8 +105,9 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
             
             // Get provider and signer
             const provider = new ethers.BrowserProvider(walletClient);
+            console.log("Provider:", provider);
             const signer = await provider.getSigner();
-            const targetKanaAddress = aptosSigner.accountAddress.toString();
+            const targetKanaAddress = petraAddress;
             
             const crossChainAggregator = new SwapAggregator(Environment.production, {
                 providers: {
@@ -58,7 +119,7 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
                     // @ts-ignore
                     polygon: signer,
                     // @ts-ignore
-                    aptos: aptosSigner
+                    aptos: petraSigner
                 }
             });
 
@@ -100,7 +161,7 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
                 sourceProvider: provider,
                 targetProvider: aptosProvider,
                 // @ts-ignore
-                targetSigner: aptosSigner,
+                targetSigner: petraSigner,
                 quote: optimalQuote,
                 sourceAddress: address,
                 targetAddress: targetKanaAddress,
@@ -109,11 +170,8 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
               console.log("Tokens claimed successfully!")
               console.log("Transaction hash:", claim)
 
-              await transferUSDTOnAptos(aptosSigner.accountAddress.toString(), kanaAptosAddress, amount);
-
             setShowProcessingModal(false);
             setAmount('');
-            setKanaAptosAddress('');
             setIsProcessing(false);
         } catch (error) {
             console.error(error);
@@ -122,59 +180,8 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
         }
     };
 
-    // Function to transfer USDT on Aptos
-    const transferUSDTOnAptos = async (fromAddress: string, toAddress: string, amountToTransfer: string) => {
-        try {
-            console.log("Transferring USDT on Aptos from", fromAddress, "to", toAddress);
-            
-            // USDT token address on Aptos mainnet
-            const usdtTokenAddress = USDT_ON_APTOS_ADDRESS;
-            
-            // 1. Build the transaction
-            console.log("Building USDT transfer transaction...");
-            const transaction = await aptosProvider.transaction.build.simple({
-                sender: fromAddress,
-                data: {
-                    function: "0x1::coin::transfer",
-                    functionArguments: [toAddress, ethers.parseUnits(amountToTransfer, 6).toString()],
-                    typeArguments: [`${usdtTokenAddress}::usdt::USDT`]
-                }
-            });
-            console.log("Built the transaction!");
-            
-            // 2. Sign the transaction
-            console.log("Signing transaction...");
-            const senderAuthenticator = aptosProvider.transaction.sign({
-                signer: aptosSigner,
-                transaction
-            });
-            console.log("Signed the transaction!");
-            
-            // 3. Submit the transaction
-            console.log("Submitting transaction...");
-            const submittedTransaction = await aptosProvider.transaction.submit.simple({
-                transaction,
-                senderAuthenticator
-            });
-            console.log(`Submitted transaction hash: ${submittedTransaction.hash}`);
-            
-            // 4. Wait for transaction to be confirmed
-            console.log("Waiting for transaction confirmation...");
-            const executedTransaction = await aptosProvider.waitForTransaction({ 
-                transactionHash: submittedTransaction.hash 
-            });
-            console.log("Transaction confirmed:", executedTransaction);
-            
-            console.log("USDT transfer on Aptos completed:", submittedTransaction.hash);
-            return submittedTransaction.hash;
-        } catch (error) {
-            console.error('Error transferring USDT on Aptos:', error);
-            throw new Error(`Failed to transfer USDT on Aptos: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-    };
-
     const handleDeposit = async () => {
-        if (!address || !walletClient || !kanaAptosAddress) return;
+        if (!address || !walletClient || !petraAddress) return;
 
         try {
             setIsProcessing(true);
@@ -206,7 +213,6 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
     const handleDisconnect = () => {
         // Reset all state values
         setAmount('20');
-        setKanaAptosAddress('');
         setIsProcessing(false);
         setShowProcessingModal(false);
 
@@ -216,11 +222,11 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
 
 
     const shouldDisableInteraction = !address;
-    const isKanaAddressValid = kanaAptosAddress.length > 0;
+    const isKanaAddressValid = petraAddress.length > 0;
 
     return (
         <div className="min-h-screen bg-aarc-bg grid-background">
-            <Navbar handleDisconnect={handleDisconnect} />
+            <Navbar />
             <main className="mt-24 gradient-border flex items-center justify-center mx-auto max-w-md shadow-[4px_8px_8px_4px_rgba(0,0,0,0.1)]">
                 <div className="flex flex-col items-center w-[440px] bg-[#2D2D2D] rounded-[24px] p-8 pb-[22px] gap-3">
                     {showProcessingModal ? (
@@ -248,6 +254,51 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
                                 {!address && <StyledConnectButton />}
                             </div>
 
+                            {/* Petra Wallet Connection */}
+                            {address && !isPetraConnected && (
+                                <div className="w-full">
+                                    <button
+                                        onClick={connectPetra}
+                                        disabled={isProcessing}
+                                        className="w-full h-11 bg-[#8B5CF6] hover:opacity-90 text-white font-semibold rounded-2xl border border-[rgba(139,92,246,0.2)] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="#3DDC84"/>
+                                            <path d="M2 17L12 22L22 17" stroke="#3DDC84" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                            <path d="M2 12L12 17L22 12" stroke="#3DDC84" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                        </svg>
+                                        Connect Petra Wallet
+                                    </button>
+                                    <p className="text-[12px] text-[#C3C3C3] mt-2 text-center">
+                                        Connect your Petra wallet to use Aptos
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Petra Wallet Status */}
+                            {address && isPetraConnected && (
+                                <div className="w-full flex items-center justify-between p-3 bg-[rgba(34,197,94,0.1)] border border-[rgba(34,197,94,0.2)] rounded-2xl">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                        <span className="text-[14px] text-green-400 font-medium">Petra Connected</span>
+                                    </div>
+                                    <button
+                                        onClick={disconnectPetra}
+                                        className="text-[12px] text-red-400 hover:text-red-300 underline"
+                                    >
+                                        Disconnect
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Petra Address Display */}
+                            {address && isPetraConnected && petraAddress && (
+                                <div className="w-full p-3 bg-[rgba(139,92,246,0.1)] border border-[rgba(139,92,246,0.2)] rounded-2xl">
+                                    <p className="text-[12px] text-[#C3C3C3] mb-1">Petra Address:</p>
+                                    <p className="text-[12px] text-[#8B5CF6] font-mono break-all">{petraAddress}</p>
+                                </div>
+                            )}
+
                             {/* Amount Input */}
                             <div className="w-full">
                                 <a href="https://www.kana.trade/?market=BTC-PERP" target="_blank" rel="noopener noreferrer" className="block">
@@ -268,28 +319,6 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
                                         />
                                     </div>
                                 </div>
-                            </div>
-
-                            {/* Kana Address Input */}
-                            <div className="w-full">
-                                <div className="flex items-center p-3 bg-[#2A2A2A] border border-[#424242] rounded-2xl">
-                                    <div className="w-full flex justify-between gap-3">
-                                        <img src="/kana-logo.svg" alt="Kana" className="w-6 h-6" />
-                                        <input
-                                            type="text"
-                                            value={kanaAptosAddress}
-                                            onChange={(e) => setKanaAptosAddress(e.target.value)}
-                                            className="w-full bg-transparent text-[18px] font-semibold text-[#F6F6F6] outline-none"
-                                            placeholder="Enter your Kana address"
-                                            disabled={shouldDisableInteraction}
-                                        />
-                                    </div>
-                                </div>
-                                {!isKanaAddressValid && (
-                                    <p className="text-[12px] text-[#FF6B6B] mt-2">
-                                        Please enter your Kana address
-                                    </p>
-                                )}
                             </div>
 
                             {/* Quick Amount Buttons */}
@@ -317,7 +346,7 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
                             {/* Continue Button */}
                             <button
                                 onClick={transferToKana}
-                                disabled={isProcessing || shouldDisableInteraction || !isKanaAddressValid}
+                                disabled={isProcessing || shouldDisableInteraction || !isKanaAddressValid || !isPetraConnected}
                                 className="w-full h-11 mt-2 bg-[#A5E547] hover:opacity-90 text-[#003300] font-semibold rounded-2xl border border-[rgba(0,51,0,0.05)] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {isProcessing ? 'Processing...' : 'Continue'}
