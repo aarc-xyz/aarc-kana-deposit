@@ -13,7 +13,6 @@ import { PetraSigner, getAptosWallet } from '../services/petraSigner';
 const aptosConfig = new AptosConfig({ network: Network.MAINNET });
 const aptosProvider = new Aptos(aptosConfig);
 
-
 export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal }) => {
     const [amount, setAmount] = useState('1');
     const [isProcessing, setIsProcessing] = useState(false);
@@ -152,6 +151,7 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
                 sourceProvider: provider,
                 sourceSigner: signer,
             });
+            // this trigers transfer on polygon
 
             console.log("Transfer transaction hash:", transfer.txHash);
 
@@ -167,9 +167,13 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
                 targetAddress: targetKanaAddress,
               })
 
+              // after this suer will endup with USDT on aptos
+
               console.log("Tokens claimed successfully!")
               console.log("Transaction hash:", claim)
 
+              // now we need to send USDT on aptos to kana perps on aptos (0x7a38039fffd016adcac2c53795ee49325e5ec6fddf3bf02651c09f9a583655a6)
+              
             setShowProcessingModal(false);
             setAmount('');
             setIsProcessing(false);
