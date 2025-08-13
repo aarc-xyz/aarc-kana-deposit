@@ -8,6 +8,7 @@ import type { ConnectionProviders } from '@kanalabs/aggregator';
 import { useAptosWallet } from '../hooks/useAptosWallet';
 import { useEthWallet } from '../hooks/useEthWallet';
 import { aptosProvider } from '../config/walletAdapterConfig';
+import { AarcFundKitModal, TransactionSuccessData } from '@aarc-dev/fundkit-web-sdk';
 
 // Persisted session for resuming cross-chain deposit
 // Infer quote type from aggregator method signature to avoid deep imports
@@ -58,7 +59,7 @@ const clearKanaSession = () => {
   }
 };
 
-export const KanaDepositModal = () => {
+export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal }) => {
     const [amount, setAmount] = useState('1');
     const [isProcessing, setIsProcessing] = useState(false);
     const [showProcessingModal, setShowProcessingModal] = useState(false);
@@ -83,6 +84,28 @@ export const KanaDepositModal = () => {
         disconnect: disconnectAptos,
         signAndSubmitTransaction
     } = useAptosWallet();
+
+    // Message event listener for Aarc iframe communication
+    useEffect(() => {
+        const handleReceiveMessage = async (event: MessageEvent) => {
+            // Handle messages from Aarc iframe
+            if (event?.data?.type === "depositAmountUSD") {
+                console.log("Received message from Aarc:", event.data);
+                const depositAmount = event.data.data;
+                if (depositAmount) {
+                    setAmount(depositAmount.toString());
+                }
+            }
+        };
+
+        // Add event listener
+        window.addEventListener("message", handleReceiveMessage);
+
+        // Cleanup on unmount
+        return () => {
+            window.removeEventListener("message", handleReceiveMessage);
+        };
+    }, []);
 
     // If a session exists and both wallets are connected, surface a subtle resume indicator
     useEffect(() => {
@@ -251,6 +274,27 @@ export const KanaDepositModal = () => {
         }
     };
 
+    const handleAarcModal = () => {
+        if(!aarcModal || !isConnected || !isAptosWalletConnected || !aptosAddress || !address) return;
+        try {
+            setIsProcessing(true);
+            aarcModal.updateDestinationWalletAddress(address)
+            aarcModal.updateEvents({
+                onTransactionSuccess: (data: TransactionSuccessData) => {
+                    console.log("Transaction success data:", data.data.txHash);
+                    aarcModal.close();
+                    setShowProcessingModal(true);
+                    transferToKana();
+                }
+            });
+            aarcModal.openModal()
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setIsProcessing(false);
+        }
+    }
+
     const shouldDisableInteraction = !isConnected;
     const isKanaAddressValid = aptosAddress && aptosAddress.length > 0;
 
@@ -342,12 +386,12 @@ export const KanaDepositModal = () => {
                                         <input
                                             type="text"
                                             inputMode="decimal"
-                                            pattern="^[0-9]*[.,]?[0-9]*$"
+                                            pattern="^[0-9]*[.,]?[0-9]*$" 
                                             value={amount}
                                             onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
                                             className="w-full bg-transparent text-[18px] font-semibold text-[#F6F6F6] outline-none"
                                             placeholder="Enter amount"
-                                            disabled={shouldDisableInteraction}
+                                            disabled={true}
                                         />
                                     </div>
                                 </div>
@@ -359,7 +403,7 @@ export const KanaDepositModal = () => {
                                     <button
                                         key={value}
                                         onClick={() => setAmount(value)}
-                                        disabled={shouldDisableInteraction}
+                                        disabled={true}
                                         className="flex items-center justify-center px-2 py-2 bg-[rgba(83,83,83,0.2)] border border-[#424242] rounded-lg h-[34px] flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <span className="text-[12px] font-semibold text-[#F6F6F6]">{value} USDC</span>
@@ -377,7 +421,7 @@ export const KanaDepositModal = () => {
 
                             {/* Continue Button */}
                             <button
-                                onClick={transferToKana}
+                                onClick={handleAarcModal}
                                     disabled={isProcessing || shouldDisableInteraction || !isKanaAddressValid || !isAptosWalletConnected}
                                 className="w-full h-11 mt-2 bg-[#A5E547] hover:opacity-90 text-[#003300] font-semibold rounded-2xl border border-[rgba(0,51,0,0.05)] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                             >
