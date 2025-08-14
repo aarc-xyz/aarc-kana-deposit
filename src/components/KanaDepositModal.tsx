@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
 import { USDT_ON_APTOS_ADDRESS, USDT_ON_POLYGON_ADDRESS } from '../constants';
 import { Navbar } from './Navbar';
@@ -60,7 +60,7 @@ const clearKanaSession = () => {
 };
 
 export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal }) => {
-    const [amount, setAmount] = useState('1');
+    const [amount, setAmount] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [showProcessingModal, setShowProcessingModal] = useState(false);
     
@@ -96,6 +96,14 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
                     setAmount(depositAmount.toString());
                 }
             }
+
+            if (event?.data?.type === "requestStatus") {
+                const statusObj = event.data.data;
+                console.log("Received status object from Aarc:", statusObj);
+                if (statusObj) {
+                    setAmount(statusObj.destinationTokenAmount);
+                }
+            }
         };
 
         // Add event listener
@@ -117,7 +125,7 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
     }, [isConnected, isAptosWalletConnected]);
 
     // Helper to perform the cross-chain swap using Kana
-    const transferToKana = async () => {
+    const transferToKana = useCallback(async () => {
         if (!isConnected || !isAptosWalletConnected || !aptosWallet) return;
         
         try {
@@ -272,7 +280,7 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
             setShowProcessingModal(false);
             setIsProcessing(false);
         }
-    };
+    }, [aarcModal, isConnected, isAptosWalletConnected, aptosAddress, address, isOnPolygon, switchToPolygon, getProvider, getSigner, walletClient, signAndSubmitTransaction, aptosWallet]);
 
     const handleAarcModal = () => {
         if(!aarcModal || !isConnected || !isAptosWalletConnected || !aptosAddress || !address) return;
@@ -380,35 +388,6 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
                                 <a href="https://www.kana.trade/?market=BTC-PERP" target="_blank" rel="noopener noreferrer" className="block">
                                     <h3 className="text-[14px] font-semibold text-[#F6F6F6] mb-4">Deposit in <span className="underline text-[#A5E547]">Kana</span></h3>
                                 </a>
-                                <div className="flex items-center p-3 bg-[#2A2A2A] border border-[#424242] rounded-2xl">
-                                    <div className="flex items-center gap-3">
-                                        <img src="/usdc-icon.svg" alt="USDC" className="w-6 h-6" />
-                                        <input
-                                            type="text"
-                                            inputMode="decimal"
-                                            pattern="^[0-9]*[.,]?[0-9]*$" 
-                                            value={amount}
-                                            onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-                                            className="w-full bg-transparent text-[18px] font-semibold text-[#F6F6F6] outline-none"
-                                            placeholder="Enter amount"
-                                            disabled={true}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Quick Amount Buttons */}
-                            <div className="flex gap-[14px] w-full">
-                                {['1', '5', '10', '20'].map((value) => (
-                                    <button
-                                        key={value}
-                                        onClick={() => setAmount(value)}
-                                        disabled={true}
-                                        className="flex items-center justify-center px-2 py-2 bg-[rgba(83,83,83,0.2)] border border-[#424242] rounded-lg h-[34px] flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        <span className="text-[12px] font-semibold text-[#F6F6F6]">{value} USDC</span>
-                                    </button>
-                                ))}
                             </div>
 
                             {/* Warning Message */}
