@@ -12,6 +12,8 @@
   "dependencies": {
     "@aarc-dev/fundkit-web-sdk": "^0.3.2",
     "@aarc-xyz/eth-connector": "^0.1.7",
+    "@aptos-labs/ts-sdk": "2.0.0",
+    "@aptos-labs/wallet-adapter-react": "^7.0.4",
     "@esbuild-plugins/node-globals-polyfill": "^0.2.3",
     "@kanalabs/aggregator": "0.7.14-beta.15",
     "@rainbow-me/rainbowkit": "^2.2.3",
