@@ -6,7 +6,6 @@ export const useAptosWallet = () => {
     connected,
     disconnect,
     account,
-    notDetectedWallets,
     wallets,
     wallet,
     signAndSubmitTransaction,
@@ -14,8 +13,6 @@ export const useAptosWallet = () => {
 
   const aptosWallet = wallet;
   const aptosAddress = account?.address?.toString();
-  console.log("notDetectedWallets", notDetectedWallets);
-  console.log("wallet", wallet);
   const isAptosWalletvailable = wallets.length >= 1;
   const isAptosWalletConnected = connected && wallets.length >= 1;
 

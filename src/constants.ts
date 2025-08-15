@@ -8,3 +8,4 @@ export type AddressMap = {
 
 export const USDT_ON_POLYGON_ADDRESS = "0xc2132d05d31c914a87c6611c10748aeb04b58e8f";
 export const USDT_ON_APTOS_ADDRESS = "0x357b0b74bc833e95a115ad22604854d6b0fca151cecd94111770e5d6ffc9dc2b"
+export const KANA_PERPS_ON_APTOS_ADDRESS = "0x7a38039fffd016adcac2c53795ee49325e5ec6fddf3bf02651c09f9a583655a6"
