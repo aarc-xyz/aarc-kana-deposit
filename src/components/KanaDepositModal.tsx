@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
+import { useDisconnect } from 'wagmi';
 import { USDT_ON_APTOS_ADDRESS, USDT_ON_POLYGON_ADDRESS } from '../constants';
 import { Navbar } from './Navbar';
 import StyledConnectButton from './StyledConnectButton';
@@ -64,6 +65,9 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
     const [isProcessing, setIsProcessing] = useState(false);
     const [showProcessingModal, setShowProcessingModal] = useState(false);
     
+    // Use wagmi disconnect hook directly
+    const { disconnect: disconnectEVM } = useDisconnect();
+    
     // Use the new wallet hooks
     const {
         address,
@@ -88,14 +92,14 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
     // Message event listener for Aarc iframe communication
     useEffect(() => {
         const handleReceiveMessage = async (event: MessageEvent) => {
-            // Handle messages from Aarc iframe
-            if (event?.data?.type === "depositAmountUSD") {
-                console.log("Received message from Aarc:", event.data);
-                const depositAmount = event.data.data;
-                if (depositAmount) {
-                    setAmount(depositAmount.toString());
-                }
-            }
+            // // Handle messages from Aarc iframe
+            // if (event?.data?.type === "depositAmountUSD") {
+            //     console.log("Received message from Aarc:", event.data);
+            //     const depositAmount = event.data.data;
+            //     if (depositAmount) {
+            //         setAmount(depositAmount.toString());
+            //     }
+            // }
 
             if (event?.data?.type === "requestStatus") {
                 const statusObj = event.data.data;
@@ -336,54 +340,70 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
                                 {!isConnected && <StyledConnectButton />}
                             </div>
 
-                            {/* Petra Wallet Connection */}
-                            {isConnected && !isAptosWalletConnected && (
-                                <div className="w-full">
-                                    <button
-                                        onClick={connectPetra}
-                                        disabled={isProcessing || !isAptosWalletvailable}
-                                        className="w-full h-11 bg-[#8B5CF6] hover:opacity-90 text-white font-semibold rounded-2xl border border-[rgba(139,92,246,0.2)] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="#3DDC84"/>
-                                            <path d="M2 17L12 22L22 17" stroke="#3DDC84" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                            <path d="M2 12L12 17L22 12" stroke="#3DDC84" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                        </svg>
-                                        {isAptosWalletvailable ? 'Connect Petra Wallet' : 'Install Petra Wallet'}
-                                    </button>
-                                    <p className="text-[12px] text-[#C3C3C3] mt-2 text-center">
-                                        {isAptosWalletvailable 
-                                            ? 'Connect your Petra wallet to use Aptos'
-                                            : 'Petra wallet is not installed. Click to install.'}
-                                    </p>
-                                </div>
-                            )}
-
-                            {/* Petra Wallet Status */}
-                            {isConnected && isAptosWalletConnected && (
-                                <div className="w-full flex items-center justify-between p-3 bg-[rgba(34,197,94,0.1)] border border-[rgba(34,197,94,0.2)] rounded-2xl">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                        <span className="text-[14px] text-green-400 font-medium">Petra Connected</span>
+                            {/* Wallet Connections - Side by Side */}
+                            {isConnected && (
+                                <div className="w-full flex gap-3">
+                                    {/* EVM Wallet Connection */}
+                                    <div className="flex-1 p-3 bg-[rgba(34,197,94,0.1)] border border-[rgba(34,197,94,0.2)] rounded-2xl">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                                <span className="text-[12px] text-green-400 font-medium">EVM</span>
+                                            </div>
+                                            <button
+                                                onClick={() => disconnectEVM()}
+                                                className="text-[10px] text-red-400 hover:text-red-300 underline"
+                                            >
+                                                Disconnect
+                                            </button>
+                                        </div>
+                                        {address && (
+                                            <p className="text-[10px] text-green-400 font-mono mt-1">
+                                                {address.slice(0, 6)}...{address.slice(-4)}
+                                            </p>
+                                        )}
                                     </div>
-                                    <button
-                                        onClick={disconnectAptos}
-                                        className="text-[12px] text-red-400 hover:text-red-300 underline"
-                                    >
-                                        Disconnect
-                                    </button>
+
+                                    {/* Petra Wallet Connection */}
+                                    {isAptosWalletConnected ? (
+                                        <div className="flex-1 p-3 bg-[rgba(139,92,246,0.1)] border border-[rgba(139,92,246,0.2)] rounded-2xl">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                                                    <span className="text-[12px] text-purple-400 font-medium">Petra</span>
+                                                </div>
+                                                <button
+                                                    onClick={disconnectAptos}
+                                                    className="text-[10px] text-red-400 hover:text-red-300 underline"
+                                                >
+                                                    Disconnect
+                                                </button>
+                                            </div>
+                                            {aptosAddress && (
+                                                <p className="text-[10px] text-purple-400 font-mono mt-1">
+                                                    {aptosAddress.slice(0, 6)}...{aptosAddress.slice(-4)}
+                                                </p>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="flex-1">
+                                            <button
+                                                onClick={connectPetra}
+                                                disabled={isProcessing || !isAptosWalletvailable}
+                                                className="w-full h-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-aarc-primary border border-[#0033000D] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <div className="flex items-center justify-center gap-2 w-full">
+                                                    <span className="text-aarc-button-text font-semibold whitespace-nowrap">
+                                                        {isAptosWalletvailable ? 'Connect Petra' : 'Install Petra'}
+                                                    </span>
+                                                   <img src="/petra.ico" alt="Petra" className="w-4 h-4" />
+                                                </div>
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
-                            {/* Petra Address Display */}
-                            {isConnected && isAptosWalletConnected && aptosAddress && (
-                                <div className="w-full p-3 bg-[rgba(139,92,246,0.1)] border border-[rgba(139,92,246,0.2)] rounded-2xl">
-                                    <p className="text-[12px] text-[#C3C3C3] mb-1">Petra Address:</p>
-                                    <p className="text-[12px] text-[#8B5CF6] font-mono break-all">{aptosAddress.toString()}</p>
-                                </div>
-                            )}
-
-                            {/* Amount Input */}
                             <div className="w-full">
                                 <a href="https://www.kana.trade/?market=BTC-PERP" target="_blank" rel="noopener noreferrer" className="block">
                                     <h3 className="text-[14px] font-semibold text-[#F6F6F6] mb-4">Deposit in <span className="underline text-[#A5E547]">Kana</span></h3>
@@ -391,7 +411,7 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
                             </div>
 
                             {/* Warning Message */}
-                            <div className="w-full flex gap-x-2 items-start p-4 bg-[rgba(255,183,77,0.05)] border border-[rgba(255,183,77,0.2)] rounded-2xl mt-2">
+                            <div className="w-full flex gap-x-2 items-start p-4 bg-[rgba(255,183,77,0.05)] border border-[rgba(255,183,77,0.2)] rounded-2xl">
                                 <img src="/info-icon.svg" alt="Info" className="w-4 h-4 mt-[2px]" />
                                 <p className="text-xs font-bold text-[#F6F6F6] leading-5">
                                     The funds will be deposited in Kana.

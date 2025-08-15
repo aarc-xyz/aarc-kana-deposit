@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import "@rainbow-me/rainbowkit/styles.css"
 import "./index.css"
 import { AarcEthWalletConnector, wagmiConfig } from "@aarc-xyz/eth-connector"
+import { RainbowKitProvider } from "@rainbow-me/rainbowkit"
 import DepositModal from "./components/KanaDepositModal"
 import { AptosWalletAdapterProvider } from "@aptos-labs/wallet-adapter-react"
 import { walletAdapterConfig } from "./config/walletAdapterConfig"
@@ -20,15 +21,16 @@ function App() {
     return (
         <QueryClientProvider client={queryClient}>
             <WagmiProvider config={wagmiConfig}>
-                <AarcEthWalletConnector
-                    aarcWebClient={aarcModal}
-                    debugLog={true}
-                    externalRainbowKit={true}
-                >
+                <RainbowKitProvider>
+                    <AarcEthWalletConnector
+                        aarcWebClient={aarcModal}
+                        debugLog={true}
+                        externalRainbowKit={true}
+                    />
                     <AptosWalletAdapterProvider {...walletAdapterConfig}>
                         <DepositModal aarcModal={aarcModal} />
                     </AptosWalletAdapterProvider>
-                </AarcEthWalletConnector>
+                </RainbowKitProvider>
             </WagmiProvider>
         </QueryClientProvider>
     )
