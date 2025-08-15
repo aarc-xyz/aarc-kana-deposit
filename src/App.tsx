@@ -24,10 +24,11 @@ function App() {
                     aarcWebClient={aarcModal}
                     debugLog={true}
                     externalRainbowKit={true}
-                />
-                <AptosWalletAdapterProvider {...walletAdapterConfig}>
-                    <DepositModal aarcModal={aarcModal} />
-                </AptosWalletAdapterProvider>
+                >
+                    <AptosWalletAdapterProvider {...walletAdapterConfig}>
+                        <DepositModal aarcModal={aarcModal} />
+                    </AptosWalletAdapterProvider>
+                </AarcEthWalletConnector>
             </WagmiProvider>
         </QueryClientProvider>
     )
