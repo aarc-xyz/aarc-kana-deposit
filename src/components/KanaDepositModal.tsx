@@ -36,7 +36,7 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
         aptosWallet,
         connectPetra,
         disconnect: disconnectAptos,
-        signAndSubmitTransaction
+        signAndSubmitTransaction,
     } = useAptosWallet();
 
     // Message event listener for Aarc iframe communication
@@ -144,7 +144,7 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
               console.log("Tokens claimed successfully!")
               console.log("Transaction hash:", claim)
 
-              transferUSDTOnAptos(aptosAddress, KANA_PERPS_ON_APTOS_ADDRESS , amount);
+              transferUSDTOnAptos(aptosAddress, amount);
 
             setShowProcessingModal(false);
             setAmount('');
@@ -157,51 +157,22 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
     };
 
     // Function to transfer USDT on Aptos
-    const transferUSDTOnAptos = async (fromAddress: string, toAddress: string, amountToTransfer: string) => {
+    const transferUSDTOnAptos = async (fromAddress: string, amount: string) => {
         try {
-            console.log("Transferring USDT on Aptos from", fromAddress, "to", toAddress);
-            
-            // USDT token address on Aptos mainnet
-            const usdtTokenAddress = USDT_ON_APTOS_ADDRESS;
-            
-            // 1. Build the transaction
-            console.log("Building USDT transfer transaction...");
-            const transaction = await aptosProvider.transaction.build.simple({
+            const transaction = {
                 sender: fromAddress,
                 data: {
-                    function: "0x1::aptos_account::transfer_fungible_assets", // Function to transfer fungible assets
-                    functionArguments: [usdtTokenAddress, toAddress, amountToTransfer], // amountToTransfer will include slippage. If you want the exact amount, you can get it from the swap transaction events: Aggregator::KanalabsSwapSummaryEvent
-                    typeArguments: []
+                    function: `${KANA_PERPS_ON_APTOS_ADDRESS}::perpetual_scripts::deposit` as `${string}::${string}::${string}`,
+                    functionArguments: ["0x79e18b48bc03b1643fb8080e75e030f1c2ef0179d74ad0e27dd2ca4584c23c4b", amount],
+                    typeArguments: [],
+                    multisigAddress: fromAddress
                 }
-            });
-            console.log("Built the transaction!");
+            };
+
+           const signedTransaction = await signAndSubmitTransaction(transaction);
             
-            // 2. Sign the transaction
-            console.log("Signing transaction...");
-            const senderAuthenticator = aptosProvider.transaction.sign({
-                //@ts-ignore
-                signer: signAndSubmitTransaction,
-                transaction
-            });
-            console.log("Signed the transaction!");
-            
-            // 3. Submit the transaction
-            console.log("Submitting transaction...");
-            const submittedTransaction = await aptosProvider.transaction.submit.simple({
-                transaction,
-                senderAuthenticator
-            });
-            console.log(`Submitted transaction hash: ${submittedTransaction.hash}`);
-            
-            // 4. Wait for transaction to be confirmed
-            console.log("Waiting for transaction confirmation...");
-            const executedTransaction = await aptosProvider.waitForTransaction({ 
-                transactionHash: submittedTransaction.hash 
-            });
-            console.log("Transaction confirmed:", executedTransaction);
-            
-            console.log("USDT transfer on Aptos completed:", submittedTransaction.hash);
-            return submittedTransaction.hash;
+            console.log("Signed the transaction!", signedTransaction);
+
         } catch (error) {
             console.error('Error transferring USDT on Aptos:', error);
             throw new Error(`Failed to transfer USDT on Aptos: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -252,7 +223,7 @@ export const KanaDepositModal = ({ aarcModal }: { aarcModal: AarcFundKitModal })
                             <p className="text-[14px] text-[#C3C3C3] text-center">
                                 {!isOnPolygon
                                     ? "Please approve the network switch in your wallet."
-                                    : "Please confirm the transaction in your wallet to complete the deposit."}
+                                    : "Please confirm the transaction(s) in your wallet(s) to complete the deposit."}
                             </p>
                         </div>
                     ) : (
